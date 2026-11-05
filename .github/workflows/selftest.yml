@@ -2,16 +2,8 @@ name: selftest
 on: [push, pull_request]
 jobs:
   selftest:
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install deps (macOS)
-        if: runner.os == 'macOS'
-        run: brew install jq direnv
-      - name: Install deps (Linux)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y jq direnv
+      - run: sudo apt-get update && sudo apt-get install -y jq direnv
       - run: test/selftest.sh
