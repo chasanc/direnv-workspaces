@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 410" width="880" height="410" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif">
+  <title>cd into a folder and the matching identity switches on</title>
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0L10 5L0 10z" fill="#57606a"/>
+    </marker>
+  </defs>
+  <rect x="1" y="1" width="878" height="408" rx="14" fill="#ffffff" stroke="#d0d7de" stroke-width="2"/>
+  <text x="440" y="38" text-anchor="middle" font-size="20" font-weight="600" fill="#1f2328">cd into a folder: the matching identity switches on</text>
+  <text x="440" y="60" text-anchor="middle" font-size="13" fill="#57606a">one Linux user, one laptop, no logging in and out</text>
+
+  <text x="130" y="92" text-anchor="middle" font-size="12" font-weight="600" fill="#57606a">YOU ARE IN</text>
+  <text x="685" y="92" text-anchor="middle" font-size="12" font-weight="600" fill="#57606a">TOOLS USE</text>
+
+  <!-- row 1: acme -->
+  <rect x="30" y="102" width="200" height="66" rx="10" fill="#ddf4ff" stroke="#0969da" stroke-width="2"/>
+  <text x="130" y="131" text-anchor="middle" font-size="16" font-weight="600" fill="#0550ae">~/work/acme</text>
+  <text x="130" y="152" text-anchor="middle" font-size="12" fill="#0550ae">client or employer A</text>
+  <line x1="236" y1="135" x2="494" y2="135" stroke="#57606a" stroke-width="2" marker-end="url(#ah)"/>
+  <text x="365" y="127" text-anchor="middle" font-size="12" fill="#57606a">direnv</text>
+  <rect x="500" y="102" width="350" height="66" rx="10" fill="#ddf4ff" stroke="#0969da" stroke-width="2"/>
+  <text x="517" y="126" font-size="14" font-weight="600" fill="#0550ae">acme</text>
+  <text x="517" y="145" font-size="12" fill="#0550ae">Claude account A · gh A · aws A · docker/kube A</text>
+  <text x="517" y="161" font-size="12" fill="#0550ae">git email + SSH key A</text>
+
+  <!-- row 2: globex -->
+  <rect x="30" y="184" width="200" height="66" rx="10" fill="#dafbe1" stroke="#1a7f37" stroke-width="2"/>
+  <text x="130" y="213" text-anchor="middle" font-size="16" font-weight="600" fill="#116329">~/work/globex</text>
+  <text x="130" y="234" text-anchor="middle" font-size="12" fill="#116329">client or employer B</text>
+  <line x1="236" y1="217" x2="494" y2="217" stroke="#57606a" stroke-width="2" marker-end="url(#ah)"/>
+  <text x="365" y="209" text-anchor="middle" font-size="12" fill="#57606a">direnv</text>
+  <rect x="500" y="184" width="350" height="66" rx="10" fill="#dafbe1" stroke="#1a7f37" stroke-width="2"/>
+  <text x="517" y="208" font-size="14" font-weight="600" fill="#116329">globex</text>
+  <text x="517" y="227" font-size="12" fill="#116329">Claude account B · gh B · aws B · docker/kube B</text>
+  <text x="517" y="243" font-size="12" fill="#116329">git email + SSH key B</text>
+
+  <!-- row 3: personal -->
+  <rect x="30" y="266" width="200" height="66" rx="10" fill="#fff8c5" stroke="#9a6700" stroke-width="2"/>
+  <text x="130" y="295" text-anchor="middle" font-size="16" font-weight="600" fill="#7d4e00">anywhere else (~)</text>
+  <text x="130" y="316" text-anchor="middle" font-size="12" fill="#7d4e00">your own stuff</text>
+  <line x1="236" y1="299" x2="494" y2="299" stroke="#57606a" stroke-width="2" marker-end="url(#ah)"/>
+  <text x="365" y="291" text-anchor="middle" font-size="12" fill="#57606a">default</text>
+  <rect x="500" y="266" width="350" height="66" rx="10" fill="#fff8c5" stroke="#9a6700" stroke-width="2"/>
+  <text x="517" y="290" font-size="14" font-weight="600" fill="#7d4e00">personal</text>
+  <text x="517" y="309" font-size="12" fill="#7d4e00">each tool's normal default location</text>
+  <text x="517" y="325" font-size="12" fill="#7d4e00">a forgotten setup never lands on a company</text>
+
+  <!-- deny rules bar -->
+  <rect x="30" y="350" width="820" height="40" rx="10" fill="#ffebe9" stroke="#cf222e" stroke-width="2" stroke-dasharray="6 4"/>
+  <text x="440" y="375" text-anchor="middle" font-size="13" font-weight="600" fill="#a40e26">Claude deny rules: each workspace's Claude can't read the others' folders or config</text>
+</svg>

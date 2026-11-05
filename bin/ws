@@ -1,0 +1,180 @@
+#!/usr/bin/env bash
+# ws: per-folder workspaces (personal, acme, globex, ...). Docs: docs/howto.md
+set -euo pipefail
+
+ROOT="$HOME/.config/workspaces"
+WORK="${WS_WORK:-$HOME/work}" # each workspace's folder is $WORK/<name>
+APPS="$HOME/.local/share/applications"
+# personal's tool locations (the defaults); every other workspace's Claude is denied them
+DEFAULTS=(.claude .config/gh .aws .docker .kube)
+
+die() { echo "ws: $*" >&2; exit 1; }
+need_ws() { [ -f "$ROOT/$1/envrc" ] || die "unknown workspace '$1' (see: ws list)"; }
+all_ws() { for e in "$ROOT"/*/envrc; do [ -f "$e" ] && basename "$(dirname "$e")"; done; }
+# isolated = has its own Claude config dir (everything except personal)
+isolated_ws() { for d in "$ROOT"/*/claude; do [ -d "$d" ] && basename "$(dirname "$d")"; done; }
+settings_of() { if [ "$1" = personal ]; then echo "$HOME/.claude/settings.json"; else echo "$ROOT/$1/claude/settings.json"; fi; }
+
+# Add Read/Edit deny rules for <abs path> to a Claude settings.json ("//abs" = absolute in Claude rules)
+deny_path() {
+  local f="$1" p="/$2"
+  [ -f "$f" ] || return 0
+  jq --arg r "Read($p/**)" --arg e "Edit($p/**)" \
+    '.permissions.deny = (((.permissions.deny // []) + [$r, $e]) | unique)' "$f" > "$f.tmp"
+  mv "$f.tmp" "$f"
+}
+
+cmd_status() {
+  echo "workspace: ${WORKSPACE:-<none>}"
+  for v in CLAUDE_CONFIG_DIR GH_CONFIG_DIR AWS_CONFIG_FILE KUBECONFIG DOCKER_CONFIG NPM_CONFIG_USERCONFIG; do
+    printf '  %-24s %s\n' "$v" "${!v:-(tool default)}"
+  done
+  printf '  %-24s %s\n' "git user.email" "$(git config user.email || echo '-')"
+}
+
+cmd_list() {
+  local n
+  for n in $(all_ws); do
+    echo "$n"
+    if [ -f "$ROOT/$n/folders" ]; then sed 's/^/    /' "$ROOT/$n/folders"; fi
+  done
+}
+
+cmd_add() { # ws add <name> <folder>
+  [ $# -eq 2 ] || die "usage: ws add <workspace> <folder>"
+  local name="$1" dir other line
+  need_ws "$name"
+  dir="$(realpath -m "$2")"
+  mkdir -p "$dir"
+  line="source_env \"\$HOME/.config/workspaces/$name/envrc\""
+  if [ -f "$dir/.envrc" ]; then
+    grep -qxF "$line" "$dir/.envrc" || die "$dir/.envrc already exists with other content; edit it by hand"
+  else
+    printf '%s\n' "$line" > "$dir/.envrc"
+  fi
+  if command -v direnv >/dev/null; then direnv allow "$dir"; fi
+  # personal is the global git default, so it needs no includeIf
+  [ "$name" = personal ] || git config --global "includeIf.gitdir:$dir/.path" "$ROOT/$name/gitconfig"
+  grep -qxF "$dir" "$ROOT/$name/folders" 2>/dev/null || echo "$dir" >> "$ROOT/$name/folders"
+  for other in $(all_ws); do
+    [ "$other" = "$name" ] || deny_path "$(settings_of "$other")" "$dir"
+  done
+  echo "ws: $dir -> $name"
+}
+
+cmd_new() { # ws new <name> [git-email]
+  [ $# -ge 1 ] || die "usage: ws new <name> [git-email]"
+  local name="$1" email="${2:-CHANGE-ME@$1.invalid}"
+  local W="$ROOT/$1" n c f l
+  [[ "$name" =~ ^[A-Za-z][A-Za-z0-9]*$ ]] || die "name must be letters/digits only (e.g. acme)"
+  [ "$name" != personal ] || die "'personal' is reserved (the default workspace)"
+  [ ! -e "$W" ] || die "workspace '$name' already exists"
+  [ -f "$ROOT/personal/envrc" ] || die "personal workspace missing; run ./install.sh first"
+  mkdir -p "$HOME/.claude" # template for the new Claude config; may be empty
+
+  mkdir -p "$W"/{claude,memory,gh,aws,docker,kube,secrets} "$HOME/.cache/workspaces/$name"
+  chmod 700 "$W" "$W/secrets"
+  printf 'WS=%s; . "$HOME/.config/workspaces/isolated.sh"\n' "$name" > "$W/envrc"
+  printf '[user]\n\temail = %s\n[core]\n\tsshCommand = ssh -i ~/.ssh/id_ed25519_%s -o IdentitiesOnly=yes\n' \
+    "$email" "$name" > "$W/gitconfig"
+  touch "$W/npmrc"
+
+  # Tool setup from personal: local contexts only, never logins
+  if [ -d "$HOME/.docker/contexts" ]; then cp -r "$HOME/.docker/contexts" "$W/docker/"; fi
+  if [ -f "$HOME/.docker/config.json" ]; then
+    jq 'del(.auths, .credHelpers, .credsStore)' "$HOME/.docker/config.json" > "$W/docker/config.json"
+  fi
+  if [ -f "$HOME/.kube/config" ]; then cp "$HOME/.kube/config" "$W/kube/config"; fi
+
+  # Claude: personal's skills/hooks/settings/MCPs, but its own memory, no credentials or history
+  for c in CLAUDE.md settings.json settings.local.json skills agents hooks tools; do
+    if [ -e "$HOME/.claude/$c" ]; then cp -r "$HOME/.claude/$c" "$W/claude/"; fi
+  done
+  # relative skill links (../../.agents/...) would dangle in the copy; point them at the real target
+  for l in "$HOME"/.claude/skills/*; do
+    if [ -L "$l" ] && [ -e "$l" ]; then ln -sfnT "$(realpath "$l")" "$W/claude/skills/${l##*/}"; fi
+  done
+  [ -f "$W/claude/settings.json" ] || echo '{}' > "$W/claude/settings.json"
+  # personal's own paths (hook commands, additionalDirectories) become this workspace's
+  jq --arg n "$name" --arg h "$HOME" --arg m "~/.config/workspaces/$name/memory" \
+    'walk(if type == "string" then gsub("(?<p>~|\\$HOME|\($h))/\\.claude/"; "\(.p)/.config/workspaces/\($n)/claude/") else . end)
+     | .autoMemoryDirectory = $m' \
+    "$W/claude/settings.json" > "$W/claude/settings.json.tmp"
+  mv "$W/claude/settings.json.tmp" "$W/claude/settings.json"
+  if [ -f "$HOME/.claude.json" ]; then
+    jq '{mcpServers: (.mcpServers // {})}' "$HOME/.claude.json" > "$W/claude/.claude.json"
+  fi
+  # Block personal's default locations, and every other workspace's folders and config dirs, in this one
+  for c in "${DEFAULTS[@]}"; do deny_path "$W/claude/settings.json" "$HOME/$c"; done
+  jq --arg f "/$HOME/.claude.json" '.permissions.deny = (((.permissions.deny // []) + ["Read(\($f))", "Edit(\($f))"]) | unique)' \
+    "$W/claude/settings.json" > "$W/claude/settings.json.tmp"
+  mv "$W/claude/settings.json.tmp" "$W/claude/settings.json"
+  for n in $(all_ws); do
+    [ "$n" != "$name" ] || continue
+    deny_path "$(settings_of "$n")" "$W" # and hide this workspace's config from the existing ones
+    deny_path "$W/claude/settings.json" "$ROOT/$n"
+    if [ -f "$ROOT/$n/folders" ]; then
+      while read -r f; do deny_path "$W/claude/settings.json" "$f"; done < "$ROOT/$n/folders"
+    fi
+  done
+
+  if [ "${WS_SKIP_PLUGINS:-}" != 1 ] && command -v claude >/dev/null && [ -f "$HOME/.claude/plugins/known_marketplaces.json" ]; then
+    jq -r '.[].source | .repo // .url // .path' "$HOME/.claude/plugins/known_marketplaces.json" | while read -r src; do
+      CLAUDE_CONFIG_DIR="$W/claude" claude plugin marketplace add "$src" || echo "ws: marketplace $src failed, add it later" >&2
+    done
+    jq -r '.enabledPlugins // {} | to_entries[] | select(.value) | .key' "$W/claude/settings.json" | while read -r p; do
+      CLAUDE_CONFIG_DIR="$W/claude" claude plugin install --scope user "$p" || echo "ws: plugin $p failed, install it later" >&2
+    done
+  fi
+
+  cmd_add "$name" "$WORK/$name"
+  if command -v claude-desktop >/dev/null; then cmd_launcher "$name"; fi
+
+  cat <<EOF
+
+ws: workspace '$name' created.
+Next, in a terminal inside $WORK/$name:
+  1. ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_$name   (and add the .pub to the git host)
+  2. claude          -> log in (your personal account until $name gives you one)
+  3. gh auth login; aws configure   (skip any tool you don't use there)
+  4. optional env tokens: one file per variable in $W/secrets/ (chmod 600), e.g. secrets/NPM_TOKEN
+$( [ "$email" = "CHANGE-ME@$name.invalid" ] && echo "  5. set the real git email in $W/gitconfig" )
+EOF
+}
+
+cmd_desktop() { # ws desktop <name> [url]: Claude Desktop with that workspace's env and its own profile
+  [ $# -ge 1 ] || die "usage: ws desktop <workspace> [claude://url]"
+  need_ws "$1"
+  local name="$1"
+  shift
+  set +u # envrc files are written for direnv, not for set -u
+  . "$ROOT/$name/envrc"
+  # personal is the default profile (~/.config/Claude); every other workspace gets its own
+  if [ "$name" = personal ]; then unset CLAUDE_USER_DATA_DIR; else export CLAUDE_USER_DATA_DIR="$ROOT/$name/claude-desktop"; fi
+  exec claude-desktop "$@"
+}
+
+cmd_launcher() { # ws launcher <name>: app-menu entry that starts Claude Desktop in that workspace
+  [ $# -eq 1 ] || die "usage: ws launcher <workspace>"
+  need_ws "$1"
+  [ "$1" != personal ] || die "personal uses the normal Claude entry; no launcher needed"
+  local name="$1"
+  mkdir -p "$APPS"
+  # no MimeType: claude:// links stay with the normal (personal) entry
+  printf '[Desktop Entry]\nType=Application\nName=Claude (%s)\nIcon=claude-desktop\nExec=%s desktop %s %%U\nCategories=Utility;Development;\n' \
+    "$name" "$(realpath "$0")" "$name" > "$APPS/claude-$name.desktop"
+  if command -v update-desktop-database >/dev/null; then update-desktop-database "$APPS"; fi
+  echo "ws: Claude Desktop launcher for $name in $APPS"
+}
+
+case "${1:-status}" in
+  status) cmd_status ;;
+  list)   cmd_list ;;
+  add)    shift; cmd_add "$@" ;;
+  new)    shift; cmd_new "$@" ;;
+  desktop)  shift; cmd_desktop "$@" ;;
+  launcher) shift; cmd_launcher "$@" ;;
+  -h|--help|help)
+    echo "usage: ws [status] | ws list | ws new <name> [git-email] | ws add <workspace> <folder> | ws desktop <workspace> | ws launcher <workspace>" ;;
+  *) die "unknown command '$1' (try: ws help)" ;;
+esac
