@@ -31,6 +31,22 @@ Everything runs as one Linux user. Any program you run can read every file. This
 
 Requires `bash`, `git`, `jq` and `direnv`.
 
+### Platform support
+
+| Platform | Status |
+|---|---|
+| Linux | Tested (bash and zsh). |
+| macOS | **Untested, expected to mostly work.** See below. |
+| Windows | Not supported (use WSL, which counts as Linux). |
+
+**macOS, untested.** Nobody has run this on a Mac yet. The scripts avoid GNU-only tools and bash 4+ features, so stock macOS (bash 3.2, zsh, BSD userland) should work. Install the dependencies with `brew install jq direnv`. CI runs `test/selftest.sh` on macOS (`.github/workflows/selftest.yml`); check its result before relying on it.
+
+Known or possible differences on macOS:
+- The Claude Desktop launcher (`ws launcher`, `ws desktop`) writes Linux `.desktop` files and is Linux-only. `ws new` skips it automatically.
+- Tools that store logins in the macOS Keychain or under `~/Library` may ignore the config-dir variables, so two workspaces could share one login. This is unverified for `gh`, `docker` and Claude Code. After `ws new`, log in inside each workspace and check with `ws` and the tool's own status command (`gh auth status`, `claude` then `/status`).
+- The `gh` keyring gotcha in `docs/howto.md` mentions `secret-tool` (Linux). On macOS the token lives in Keychain instead.
+- Reports and fixes are welcome via issues or pull requests.
+
 ```bash
 git clone https://github.com/chasanc/direnv-workspaces.git
 cd direnv-workspaces

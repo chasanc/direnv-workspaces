@@ -9,6 +9,15 @@ APPS="$HOME/.local/share/applications"
 DEFAULTS=(.claude .config/gh .aws .docker .kube)
 
 die() { echo "ws: $*" >&2; exit 1; }
+# Absolute path with symlinks resolved; the parent dir must exist. Portable: GNU realpath -m / readlink -f are missing on macOS.
+rpath() {
+  local p="$1" t
+  while [ -L "$p" ]; do
+    t="$(readlink "$p")"
+    case "$t" in /*) p="$t" ;; *) p="$(dirname "$p")/$t" ;; esac
+  done
+  if [ -d "$p" ]; then (cd "$p" && pwd -P); else echo "$(cd "$(dirname "$p")" && pwd -P)/$(basename "$p")"; fi
+}
 need_ws() { [ -f "$ROOT/$1/envrc" ] || die "unknown workspace '$1' (see: ws list)"; }
 all_ws() { for e in "$ROOT"/*/envrc; do [ -f "$e" ] && basename "$(dirname "$e")"; done; }
 # isolated = has its own Claude config dir (everything except personal)
@@ -44,8 +53,8 @@ cmd_add() { # ws add <name> <folder>
   [ $# -eq 2 ] || die "usage: ws add <workspace> <folder>"
   local name="$1" dir other line
   need_ws "$name"
-  dir="$(realpath -m "$2")"
-  mkdir -p "$dir"
+  mkdir -p "$2"
+  dir="$(rpath "$2")"
   line="source_env \"\$HOME/.config/workspaces/$name/envrc\""
   if [ -f "$dir/.envrc" ]; then
     grep -qxF "$line" "$dir/.envrc" || die "$dir/.envrc already exists with other content; edit it by hand"
@@ -92,7 +101,7 @@ cmd_new() { # ws new <name> [git-email]
   done
   # relative skill links (../../.agents/...) would dangle in the copy; point them at the real target
   for l in "$HOME"/.claude/skills/*; do
-    if [ -L "$l" ] && [ -e "$l" ]; then ln -sfnT "$(realpath "$l")" "$W/claude/skills/${l##*/}"; fi
+    if [ -L "$l" ] && [ -e "$l" ]; then rm -f "$W/claude/skills/${l##*/}"; ln -s "$(rpath "$l")" "$W/claude/skills/${l##*/}"; fi
   done
   [ -f "$W/claude/settings.json" ] || echo '{}' > "$W/claude/settings.json"
   # personal's own paths (hook commands, additionalDirectories) become this workspace's
@@ -162,7 +171,7 @@ cmd_launcher() { # ws launcher <name>: app-menu entry that starts Claude Desktop
   mkdir -p "$APPS"
   # no MimeType: claude:// links stay with the normal (personal) entry
   printf '[Desktop Entry]\nType=Application\nName=Claude (%s)\nIcon=claude-desktop\nExec=%s desktop %s %%U\nCategories=Utility;Development;\n' \
-    "$name" "$(realpath "$0")" "$name" > "$APPS/claude-$name.desktop"
+    "$name" "$(rpath "$0")" "$name" > "$APPS/claude-$name.desktop"
   if command -v update-desktop-database >/dev/null; then update-desktop-database "$APPS"; fi
   echo "ws: Claude Desktop launcher for $name in $APPS"
 }
